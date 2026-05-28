@@ -43,3 +43,18 @@ For SPSC queues, we can eliminate locks entirely by utilizing two atomic indices
 * **Acquire/Release Ordering**: 
   * `Ordering::Release` on `tail` guarantees that the compiler prevents any prior memory writes (writing samples to the block) from migrating past the `tail` store.
   * `Ordering::Acquire` on `tail` guarantees that the consumer cannot read data from the block until it has observed the updated `tail` pointer.
+
+## Phase 3 Research: Galois LFSR & Word-Width Memory Alignment
+
+### 1. Galois Linear Feedback Shift Register (LFSR)
+Generating standard random noise in embedded targets using traditional LCG (Linear Congruential Generators) is slow due to hardware multiplication dependencies.
+* A Galois LFSR generates pseudorandom binary sequences using bit-shifts and XOR masks.
+* For our 32-bit state register, the feedback taps are chosen at positions 32, 22, 2, and 1.
+* Code implementation:
+  `self.lfsr ^= self.lfsr << 13; self.lfsr ^= self.lfsr >> 17; self.lfsr ^= self.lfsr << 5;`
+* This achieves a maximal cycle period of $2^{32} - 1$ steps before repeating, executing in only 3 CPU instructions.
+
+### 2. Register-Width Bus Alignment (Pseudo-SIMD)
+* The Cortex-M0+ bus interface is 32 bits wide.
+* Normal byte writes (`STRB`) update 8 bits at a time, leaving 24 bits of the memory bus bandwidth idle.
+* By aligning the buffer to 4 bytes (`#[repr(C, align(4))]`) and using `chunks_exact_mut(4)`, we force the compiler to emit `STR` (Store Register) instructions. This writes 4 samples concurrently, utilizing $100\%$ of the bus bandwidth.

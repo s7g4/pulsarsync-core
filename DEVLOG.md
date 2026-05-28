@@ -21,9 +21,6 @@ Implement raw hardware bootloader sequence to launch Core 1, and verify memory-b
   * *Root Cause*: I called `sev()` (Send Event) before writing to the `FIFO_WR` register. Core 1 woke up, checked the FIFO, saw it was empty, and went back to sleep.
   * *Fix*: Re-ordered execution so `write_volatile(val)` runs *first*, followed immediately by `sev()`. Now the register write occurs before the CPU wake-up event.
 
-### Status
-Dual-core boot verified. Shared atomic handshake functional.
-
 * **Compiler warning: static_mut_refs & shadowed alias**:
   * *Symptom*: Warnings about taking a mutable reference to `static mut` being discouraged, and `check` alias being ignored.
   * *Root Cause*: Modern Rust 2024 edition discourages `&mut static mut` because it easily causes aliasing undefined behavior (UB). Also, `cargo check` is a built-in keyword.
@@ -34,6 +31,9 @@ Dual-core boot verified. Shared atomic handshake functional.
   * *Root Cause*: 1) The linker script did not include vector tables because we did not flag the entry point using the `#[cortex_m_rt::entry]` macro. 2) The `critical-section` API lacked a concrete implementation.
   * *Fix*: 1) Added `#[cortex_m_rt::entry]` decorator to `main()`. 2) Enabled the `critical-section-single-core` feature in `Cargo.toml` on the `cortex-m` dependency.
 
+### Status
+Dual-core boot verified. Shared atomic handshake functional.
+
 ## Phase 2: Lock-Free Ring Buffer (Zero-Copy Inter-Core Transport)
 
 ### Goal
@@ -43,9 +43,23 @@ Implement a thread-safe SPSC ring buffer utilizing static storage and memory-ali
 * **Cortex-M0+ Modulo Division Overhead**: Using `index % CAPACITY` inside the hot paths is extremely slow on the RP2040 because the M0+ core has no hardware division hardware.
   * *Fix*: Enforced that `CAPACITY` must be a power of two at compile time via a `const assert`. Replaced all modulo division operations with `index & (CAPACITY - 1)`, which executes in a single cycle.
 
-### Status
-Lock-free ring buffer modules implemented. Static pool allocation validated.
-
 * **Clippy Error: new_without_default for RingBuffer**:
   * *Symptom*: Build failed under clippy due to implementing `new()` without implementing the `Default` trait.
   * *Fix*: Implemented `Default` for `RingBuffer` by delegating to `Self::new()`.
+
+### Status
+Lock-free ring buffer modules implemented. Static pool allocation validated.
+
+## Milestone 3: Simulated ADC Ingestion & SIMD Word-Packing
+
+### Goal
+Implement high-performance simulated ADC sampler using Galois LFSR pseudo-RNG noise and 32-bit register word packing.
+
+### What Broke & The Fight
+* **Cortex-M0+ HardFaults (Unaligned memory access)**:
+  * *Symptom*: Under emulation, writing 32-bit packed words caused memory controller hard faults.
+  * *Root Cause*: The sample block buffer array was not aligned. While some architectures support unaligned memory access (with performance penalties), Cortex-M0+ strictly forbids it.
+  * *Fix*: Implemented `#[repr(C, align(4))]` on the `SampleBlock` struct in `ring.rs`, forcing alignment of the raw sample array.
+
+### Status
+Ingestion loop complete, aligned memory packing functional.
