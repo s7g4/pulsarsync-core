@@ -1,5 +1,5 @@
 # Developer Log (DEVLOG)
-## Phase 0: Environment & Toolchain Bootstrap
+## Milestone 0: Environment & Toolchain Bootstrap
 ### Goal
 Establish a deterministic cross-compilation environment targeting the bare-metal dual-core Cortex-M0+ architecture.
 ### What Broke & The Fight
@@ -9,3 +9,27 @@ Establish a deterministic cross-compilation environment targeting the bare-metal
   * *Fix*: Pinned `flip-link` in cargo runner flags to reorder variables, placing the stack pointer at the bottom of the RAM boundary so any stack overflow triggers a hardware boundary fault rather than silent data corruption.
 ### Status
 Environment bootstrapped, build configs validated, documentation registry initialized.
+
+## Milestone 1: Kernel Skeleton & Multi-Core Boot
+
+### Goal
+Implement raw hardware bootloader sequence to launch Core 1, and verify memory-barrier synchronization using static atomic flags.
+
+### What Broke & The Fight
+* **Core 1 Launch Failures**: Core 1 was failing to boot, hanging permanently.
+  * *Symptom*: "Core 1 alive" log never printed.
+  * *Root Cause*: I called `sev()` (Send Event) before writing to the `FIFO_WR` register. Core 1 woke up, checked the FIFO, saw it was empty, and went back to sleep.
+  * *Fix*: Re-ordered execution so `write_volatile(val)` runs *first*, followed immediately by `sev()`. Now the register write occurs before the CPU wake-up event.
+
+### Status
+Dual-core boot verified. Shared atomic handshake functional.
+
+* **Compiler warning: static_mut_refs & shadowed alias**:
+  * *Symptom*: Warnings about taking a mutable reference to `static mut` being discouraged, and `check` alias being ignored.
+  * *Root Cause*: Modern Rust 2024 edition discourages `&mut static mut` because it easily causes aliasing undefined behavior (UB). Also, `cargo check` is a built-in keyword.
+  * *Fix*: Refactored `launch_core1` to accept `*mut u8` and `len` using the raw pointer projection macro `addr_of_mut!(CORE1_STACK)`. Renamed the Cargo configuration alias from `check` to `lint`.
+
+* **Linker Failure: Missing Reset Vector & Undefined Critical Section**:
+  * *Symptom*: Linker failed with `symbol not found: DefaultHandler_` and `undefined symbol: _critical_section_1_0_acquire`.
+  * *Root Cause*: 1) The linker script did not include vector tables because we did not flag the entry point using the `#[cortex_m_rt::entry]` macro. 2) The `critical-section` API lacked a concrete implementation.
+  * *Fix*: 1) Added `#[cortex_m_rt::entry]` decorator to `main()`. 2) Enabled the `critical-section-single-core` feature in `Cargo.toml` on the `cortex-m` dependency.
