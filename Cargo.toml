@@ -20,4 +20,4 @@ debug = 2
 debug-assertions = false
 incremental = false
 lto = "fat"
-opt-level = "z" # Optimize for size to fit within the 64KB CI limit
+opt-level = "z"
