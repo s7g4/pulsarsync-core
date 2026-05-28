@@ -6,6 +6,8 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use defmt_rtt as _; // Streams logs over the RTT channel to your debug host
 use panic_probe as _; // Catches Rust panics and logs the stack trace over RTT
 
+pub mod buffer;
+
 // Stack size constant to avoid referencing mutable static structures for size calculations
 const CORE1_STACK_SIZE: usize = 4096;
 

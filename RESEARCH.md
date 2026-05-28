@@ -19,3 +19,27 @@
 ### 3. RP2040 Single-Cycle IO (SIO) Block (§2.3.1 RP2040 Datasheet)
 * The SIO block bypasses the main bus fabric, executing register modifications in a single CPU cycle.
 * It provides 8 hardware spinlocks mapped to memory addresses, allowing low-overhead synchronization between Core 0 and Core 1.
+
+## Phase 1 Research: Multi-Core Boot & Hardware Handshakes
+### 1. Inter-Core FIFO Register Mapping
+The RP2040 has a dedicated hardware SIO FIFO block. The registers used are:
+* `FIFO_WR` (Write FIFO): Memory-mapped at `0xD000_0050`. Writing here puts a word into the outgoing queue to the other core.
+* `FIFO_ST` (FIFO Status): Memory-mapped at `0xD000_0058`. Bit 1 (`0x2`) is the `RDY` flag, indicating whether the FIFO has space for a write.
+* To prevent CPU lockup, we must poll the `RDY` flag before each write.
+### 2. Volatile Operations and Instruction Cache
+In bare-metal programming, memory-mapped registers are mutable from outside the CPU's execution thread.
+* Standard memory dereferencing (`*reg`) is subject to compiler load-caching (where the compiler reads the value once and stores it in a CPU register for subsequent loop iterations).
+* We use `core::ptr::read_volatile` and `core::ptr::write_volatile` to generate explicit `LDR` and `STR` bus access instructions, ensuring the CPU queries the physical hardware on every loop iteration.
+
+## Phase 2 Research: Lock-Free Queues & Atomic Memory Barriers
+### 1. Single-Producer Single-Consumer (SPSC) Architecture
+In multi-threaded environments, synchronization is typically handled using mutual exclusion locks (Mutexes). However, Mutexes require CPU-stalling spinlocks or OS scheduler yields. 
+For SPSC queues, we can eliminate locks entirely by utilizing two atomic indices:
+* `head`: The consumer's read index. Only the consumer writes to `head`; the producer reads it.
+* `tail`: The producer's write index. Only the producer writes to `tail`; the consumer reads it.
+### 2. Cache Coherence & Memory Ordering on Cortex-M0+
+* **The Cortex-M0+ Pipeline**: Unlike high-end application processors (Cortex-A), the Cortex-M0+ has a simple 2-stage/3-stage execution pipeline and does not have hardware data caches or out-of-order execution engines.
+* **Why Atomics Still Matter**: Even though the physical hardware executes sequentially, the Rust compiler can reorder instructions during optimization. If we compile with `Relaxed` ordering, the compiler could reorder the data writes in the buffer slot to occur *after* the `tail` pointer is incremented.
+* **Acquire/Release Ordering**: 
+  * `Ordering::Release` on `tail` guarantees that the compiler prevents any prior memory writes (writing samples to the block) from migrating past the `tail` store.
+  * `Ordering::Acquire` on `tail` guarantees that the consumer cannot read data from the block until it has observed the updated `tail` pointer.

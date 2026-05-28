@@ -33,3 +33,19 @@ Dual-core boot verified. Shared atomic handshake functional.
   * *Symptom*: Linker failed with `symbol not found: DefaultHandler_` and `undefined symbol: _critical_section_1_0_acquire`.
   * *Root Cause*: 1) The linker script did not include vector tables because we did not flag the entry point using the `#[cortex_m_rt::entry]` macro. 2) The `critical-section` API lacked a concrete implementation.
   * *Fix*: 1) Added `#[cortex_m_rt::entry]` decorator to `main()`. 2) Enabled the `critical-section-single-core` feature in `Cargo.toml` on the `cortex-m` dependency.
+
+## Phase 2: Lock-Free Ring Buffer (Zero-Copy Inter-Core Transport)
+
+### Goal
+Implement a thread-safe SPSC ring buffer utilizing static storage and memory-aligned structures to achieve zero-copy data passing between Core 0 and Core 1.
+
+### What Broke & The Fight
+* **Cortex-M0+ Modulo Division Overhead**: Using `index % CAPACITY` inside the hot paths is extremely slow on the RP2040 because the M0+ core has no hardware division hardware.
+  * *Fix*: Enforced that `CAPACITY` must be a power of two at compile time via a `const assert`. Replaced all modulo division operations with `index & (CAPACITY - 1)`, which executes in a single cycle.
+
+### Status
+Lock-free ring buffer modules implemented. Static pool allocation validated.
+
+* **Clippy Error: new_without_default for RingBuffer**:
+  * *Symptom*: Build failed under clippy due to implementing `new()` without implementing the `Default` trait.
+  * *Fix*: Implemented `Default` for `RingBuffer` by delegating to `Self::new()`.
