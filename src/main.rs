@@ -25,6 +25,8 @@ static mut CORE1_STACK: [u8; CORE1_STACK_SIZE] = [0; CORE1_STACK_SIZE];
 fn main() -> ! {
     // Build the dispersion delay table at startup (250 kHz sample rate)
     crate::dsp::dedispersion::build_delay_table(250_000);
+    crate::dsp::fft::build_twiddle_tables();
+
     defmt::info!(
         "PulsarSync-Core v{} — Core 0 alive",
         env!("CARGO_PKG_VERSION")

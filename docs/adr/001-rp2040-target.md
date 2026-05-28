@@ -4,7 +4,7 @@
 Proposed & Approved
 
 ## Context
-PulsarSync-Core is a real-time signal processing engine that must ingest raw samples at high data rates (simulated $250\text{ kHz}$ sample rate, equivalent to $1\text{ ms}$ processing frames) and execute heavy digital signal processing (FFT, dispersion delay adjustments, phase-folding integration). Doing this on a single-core system introduces timing conflicts between the synchronous, time-critical ingestion/DSP pipeline and the asynchronous phase-folding accumulation loop. Therefore, a dual-core architecture is required.
+PulsarSync-Core is a real-time signal processing engine that must ingest raw samples at high data rates (simulated 250 kHz sample rate, equivalent to 1 ms processing frames) and execute heavy digital signal processing (FFT, dispersion delay adjustments, phase-folding integration). Doing this on a single-core system introduces timing conflicts between the synchronous, time-critical ingestion/DSP pipeline and the asynchronous phase-folding accumulation loop. Therefore, a dual-core architecture is required.
 
 We evaluated two main microcontrollers:
 1. **RP2040 (Cortex-M0+)**

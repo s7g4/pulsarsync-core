@@ -61,12 +61,73 @@ Generating standard random noise in embedded targets using traditional LCG (Line
 
 ## Phase 4 Research: Cold Plasma Dispersion Mechanics
 
-### 1. Interstellar Dispersion Dispersion Delay
-The group velocity $v_g$ of a radio wave travelling through a cold, unmagnetized ionized plasma (the ISM) depends on frequency $f$:
-$$v_g = c \sqrt{1 - \left(\frac{f_p}{f}\right)^2}$$
-Where $f_p$ is the plasma frequency of the medium (typically $\sim 10\text{ kHz}$ in the interstellar medium). Since $f \gg f_p$ for radio astronomy bands ($300-400\text{ MHz}$), we expand the square root to first order. The frequency-dependent delay between two frequencies is derived as:
-$$\Delta t = 4.15 \times 10^6 \times \text{DM} \times \left( f_{\text{lo}}^{-2} - f_{\text{hi}}^{-2} \right)\text{ ms}$$
+### 1. Interstellar Dispersion Delay
+The group velocity (v_g) of a radio wave travelling through a cold, unmagnetized ionized plasma (the ISM) depends on frequency (f):
+v_g = c * sqrt(1 - (f_p / f)^2)
+Where f_p is the plasma frequency of the medium (typically ~10 kHz in the interstellar medium). Since f >> f_p for radio astronomy bands (300-400 MHz), we expand the equation. The frequency-dependent delay between two frequencies is derived as:
+Delta_t = 4.15 * 10^6 * DM * (f_lo^-2 - f_hi^-2) ms
 
 ### 2. Fixed-Point Scaling Math (Q16.16 and Q32.32)
 * To calculate the delay, we multiply a large scaling constant $K = 4,150,000$ by $DM = 67.97$ and a very small frequency difference $\left(f_i^{-2} - f_{\text{hi}}^{-2}\right)$.
 * To prevent intermediate multiplication overflows under 32-bit registers, we scale $K$ into Q16.16 (yielding a 64-bit value) and calculate the fractional inverse frequency squares in Q32.32. The result is then scaled back to integer sample indices.
+
+## Phase 5 Research: Fixed-Point FFT & CORDIC Trignometry
+
+### 1. Cooley-Tukey Butterfly Complexity
+The Cooley-Tukey Radix-2 Decimation-in-Time (DIT) algorithm reduces the DFT complexity from $O(N^2)$ to $O(N \log_2 N)$. 
+* For $N = 512$, the stages are $\log_2(512) = 9$.
+* In each stage, we execute $N/2 = 256$ butterfly operations.
+* Total butterflies = $9 \times 256 = 2304$ butterflies.
+* Each butterfly requires 4 multiplications and 4 additions.
+* Since Cortex-M0+ multiplication `MUL` executes in a single cycle, the arithmetic calculations are extremely fast, taking approximately $27,000$ clock cycles ($0.2\text{ ms}$ at $133\text{ MHz}$).
+
+### 2. Cooley-Tukey In-Place Split Borrowing
+Rust enforces strict aliasing rules: we cannot borrow two elements from the same array as mutable at the same time (`&mut array[a]` and `&mut array[b]`).
+To solve this in-place without copying memory:
+* We split the slice at the higher index: `let (left, right) = buf.split_at_mut(b_idx);`.
+* This yields two non-overlapping slices: `left` containing indices `0..b_idx` and `right` containing `b_idx..FFT_SIZE`.
+* We pass `&mut left[a_idx]` and `&mut right[0]`. The compiler accepts this as completely safe because the memory regions are disjoint.
+## Phase 3 Research: Galois LFSR & Word-Width Memory Alignment
+
+### 1. Galois Linear Feedback Shift Register (LFSR)
+Generating standard random noise in embedded targets using traditional LCG (Linear Congruential Generators) is slow due to hardware multiplication dependencies.
+* A Galois LFSR generates pseudorandom binary sequences using bit-shifts and XOR masks.
+* For our 32-bit state register, the feedback taps are chosen at positions 32, 22, 2, and 1.
+* Code implementation:
+  self.lfsr ^= self.lfsr << 13; self.lfsr ^= self.lfsr >> 17; self.lfsr ^= self.lfsr << 5;
+* This achieves a maximal cycle period of 2^32 - 1 steps before repeating, executing in only 3 CPU instructions.
+
+### 2. Register-Width Bus Alignment (Pseudo-SIMD)
+* The Cortex-M0+ bus interface is 32 bits wide.
+* Normal byte writes (STRB) update 8 bits at a time, leaving 24 bits of the memory bus bandwidth idle.
+* By aligning the buffer to 4 bytes (#[repr(C, align(4))]) and using chunks_exact_mut(4), we force the compiler to emit STR (Store Register) instructions. This writes 4 samples concurrently, utilizing 100% of the bus bandwidth.
+
+
+## Phase 4 Research: Cold Plasma Dispersion Mechanics
+
+### 1. Interstellar Dispersion Delay
+The group velocity (v_g) of a radio wave travelling through a cold, unmagnetized ionized plasma (the ISM) depends on frequency (f):
+v_g = c * sqrt(1 - (f_p / f)^2)
+Where f_p is the plasma frequency of the medium (typically ~10 kHz in the interstellar medium). Since f >> f_p for radio astronomy bands (300-400 MHz), we expand the equation. The frequency-dependent delay between two frequencies is derived as:
+Delta_t = 4.15 * 10^6 * DM * (f_lo^-2 - f_hi^-2) ms
+
+### 2. Fixed-Point Scaling Math (Q16.16 and Q32.32)
+* To calculate the delay, we multiply a large scaling constant K = 4,150,000 by DM = 67.97 and a very small frequency difference (f_i^-2 - f_hi^-2).
+* To prevent intermediate multiplication overflows under 32-bit registers, we scale K into Q16.16 (yielding a 64-bit value) and calculate the fractional inverse frequency squares in Q32.32. The result is then scaled back to integer sample indices.
+
+## Phase 5 Research: Fixed-Point FFT & CORDIC Trigonometry
+
+### 1. Cooley-Tukey Butterfly Complexity
+The Cooley-Tukey Radix-2 Decimation-in-Time (DIT) algorithm reduces the DFT complexity from O(N^2) to O(N * log2(N)).
+* For N = 512, the stages are log2(512) = 9.
+* In each stage, we execute N/2 = 256 butterfly operations.
+* Total butterflies = 9 * 256 = 2304 butterflies.
+* Each butterfly requires 4 multiplications and 4 additions.
+* Since Cortex-M0+ multiplication MUL executes in a single cycle, the arithmetic calculations are extremely fast, taking approximately 27,000 clock cycles (0.2 ms at 133 MHz).
+
+### 2. Cooley-Tukey In-Place Split Borrowing
+Rust enforces strict aliasing rules: we cannot borrow two elements from the same array as mutable at the same time (&mut array[a] and &mut array[b]).
+To solve this in-place without copying memory:
+* We split the slice at the higher index: let (left, right) = buf.split_at_mut(b_idx);.
+* This yields two non-overlapping slices: left containing indices 0..b_idx and right containing b_idx..FFT_SIZE.
+* We pass &mut left[a_idx] and &mut right[0]. The compiler accepts this as completely safe because the memory regions are disjoint.

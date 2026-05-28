@@ -5,7 +5,7 @@ Approved
 
 ## Context
 In our dual-core architecture, Core 0 ingests and processes high-rate samples, which it must deliver to Core 1 for phase folding. In a typical operating system, this would be handled using a thread-safe Queue guarded by a Mutex. However, on a bare-metal microcontroller like the RP2040, a Mutex requires hardware spinlocks that stall the cores when there is contention.
-At a sample rate of $250\text{ kHz}$ ($512\text{ bytes}$ per block $\approx 2\text{ ms}$ processing window), any CPU stalls or blockages will lead to missed samples (ring buffer overflow). Therefore, we need a lock-free, zero-copy communication channel.
+At a sample rate of 250 kHz (512 bytes per block = ~2 ms processing window), any CPU stalls or blockages will lead to missed samples (ring buffer overflow). Therefore, we need a lock-free, zero-copy communication channel.
 
 ## Decision
 We will implement a static, lock-free, Single-Producer Single-Consumer (SPSC) ring buffer using atomic operations with explicit memory ordering.

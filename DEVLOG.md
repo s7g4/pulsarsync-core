@@ -81,3 +81,23 @@ Implement fixed-point calculation of frequency dispersion delays for Vela pulsar
 
 ### Status
 Dispersion delay table logic verified. Center frequency table resolves maximum delays correctly.
+
+## Milestone 5: Fixed-Point FFT Engine
+
+### Goal
+Implement in-place 512-point Cooley-Tukey DIT FFT and boot-time Q1.12 CORDIC twiddle factor tables.
+
+### What Broke & The Fight
+* **Rust Aliasing Rules (`&mut` constraints)**:
+  * *Symptom*: Direct indexing like `butterfly(&mut buf[a_idx], &mut buf[b_idx])` failed compile checks with borrow check errors.
+  * *Fix*: Implemented slice splitting using `split_at_mut(b_idx)` to obtain disjoint references to `left[a_idx]` and `right[0]`, bypassing borrow checks safely.
+* **Borrowing Static Muts inside FFT**:
+  * *Symptom*: Accessing `TWIDDLE_RE` inside the butterfly stage loop triggered `static-mut-refs` warnings.
+  * *Fix*: Declared raw pointers `addr_of!(TWIDDLE_RE)` before the loop and read values via `ptr.add(idx).read()`.
+
+* **Clippy Warning: needless_range_loop in cordic_cos_sin**:
+  * *Symptom*: Build failure due to range indexing on `CORDIC_ANGLES`.
+  * *Fix*: Replaced `for i in 0..12` with `for (i, &angle_step) in CORDIC_ANGLES.iter().enumerate()`.
+
+### Status
+CORDIC calculation and FFT bit-reversal mechanics compiled.
