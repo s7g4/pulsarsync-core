@@ -7,6 +7,7 @@ use defmt_rtt as _; // Streams logs over the RTT channel to your debug host
 use panic_probe as _; // Catches Rust panics and logs the stack trace over RTT
 
 pub mod buffer;
+pub mod dsp;
 pub mod ingestion;
 pub mod pulsar;
 
@@ -22,6 +23,8 @@ static mut CORE1_STACK: [u8; CORE1_STACK_SIZE] = [0; CORE1_STACK_SIZE];
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    // Build the dispersion delay table at startup (250 kHz sample rate)
+    crate::dsp::dedispersion::build_delay_table(250_000);
     defmt::info!(
         "PulsarSync-Core v{} — Core 0 alive",
         env!("CARGO_PKG_VERSION")

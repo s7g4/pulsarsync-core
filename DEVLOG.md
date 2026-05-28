@@ -63,3 +63,21 @@ Implement high-performance simulated ADC sampler using Galois LFSR pseudo-RNG no
 
 ### Status
 Ingestion loop complete, aligned memory packing functional.
+
+## Milestone 4: Dedispersion Pipeline (Core 0, the Science Heart)
+
+### Goal
+Implement fixed-point calculation of frequency dispersion delays for Vela pulsar DM (67.97) and establish a static lookup delay table.
+
+### What Broke & The Fight
+* **Integer Arithmetic Underflows**: In the initial delay math:
+  `let inv_f2_i = 1 / (f_mhz * f_mhz)`
+  Since $f\_mhz \ge 300$, the division `1 / 90000` evaluates to `0` in standard integer math, yielding no delay differences.
+  * *Fix*: Multiplied the numerator by $2^{32}$ (shifting it left by 32 bits: `1u64 << 32`), allowing us to capture high-precision fractions under Q32.32 representation.
+
+* **Clippy Warning Mitigations (needless_range_loop, implicit_saturating_sub, static-mut-refs)**:
+  * *Symptom*: Build failures due to indexing `DELAY_TABLE` using loop ranges, manual subtraction conditions, and borrowing `DELAY_TABLE` for `iter().max()`.
+  * *Fix*: 1) Enumerated over `DELAY_TABLE.iter_mut()`. 2) Replaced the manual subtraction checks with `saturating_sub`. 3) Tracked `max_delay` inline during compilation loop to prevent borrowing the static mut array.
+
+### Status
+Dispersion delay table logic verified. Center frequency table resolves maximum delays correctly.

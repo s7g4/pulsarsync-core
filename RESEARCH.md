@@ -58,3 +58,15 @@ Generating standard random noise in embedded targets using traditional LCG (Line
 * The Cortex-M0+ bus interface is 32 bits wide.
 * Normal byte writes (`STRB`) update 8 bits at a time, leaving 24 bits of the memory bus bandwidth idle.
 * By aligning the buffer to 4 bytes (`#[repr(C, align(4))]`) and using `chunks_exact_mut(4)`, we force the compiler to emit `STR` (Store Register) instructions. This writes 4 samples concurrently, utilizing $100\%$ of the bus bandwidth.
+
+## Phase 4 Research: Cold Plasma Dispersion Mechanics
+
+### 1. Interstellar Dispersion Dispersion Delay
+The group velocity $v_g$ of a radio wave travelling through a cold, unmagnetized ionized plasma (the ISM) depends on frequency $f$:
+$$v_g = c \sqrt{1 - \left(\frac{f_p}{f}\right)^2}$$
+Where $f_p$ is the plasma frequency of the medium (typically $\sim 10\text{ kHz}$ in the interstellar medium). Since $f \gg f_p$ for radio astronomy bands ($300-400\text{ MHz}$), we expand the square root to first order. The frequency-dependent delay between two frequencies is derived as:
+$$\Delta t = 4.15 \times 10^6 \times \text{DM} \times \left( f_{\text{lo}}^{-2} - f_{\text{hi}}^{-2} \right)\text{ ms}$$
+
+### 2. Fixed-Point Scaling Math (Q16.16 and Q32.32)
+* To calculate the delay, we multiply a large scaling constant $K = 4,150,000$ by $DM = 67.97$ and a very small frequency difference $\left(f_i^{-2} - f_{\text{hi}}^{-2}\right)$.
+* To prevent intermediate multiplication overflows under 32-bit registers, we scale $K$ into Q16.16 (yielding a 64-bit value) and calculate the fractional inverse frequency squares in Q32.32. The result is then scaled back to integer sample indices.

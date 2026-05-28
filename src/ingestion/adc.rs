@@ -1,4 +1,4 @@
-use crate::buffer::{SampleBlock, BLOCK_SIZE, RING};
+use crate::buffer::{SampleBlock, RING};
 use crate::pulsar::inject_synthetic_pulse;
 
 pub struct AdcSimulator {
@@ -6,6 +6,12 @@ pub struct AdcSimulator {
     lfsr: u32, // Galois LFSR state register for noise generation
     pub blocks_produced: u32,
     pub blocks_dropped: u32,
+}
+
+impl Default for AdcSimulator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AdcSimulator {
