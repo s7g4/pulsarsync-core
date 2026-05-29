@@ -29,8 +29,22 @@ cargo test --features host-testing --all-targets
 ```
 
 ### Run Host SDR-Appliance Simulation
-The host simulator runs a multi-threaded virtual RP2040 pipeline with live VITA-49 UDP stream ingestion:
 
+You can run the entire simulation, boot the daemon, start the emitter, and open the web dashboard in two ways:
+
+#### Option A: Automated One-Click Launcher (Recommended for Windows)
+Simply run the automated batch script from the root directory:
+```bash
+.\run_appliance.bat
+```
+This script will:
+1. Compile and launch the Rust receiver daemon in a dedicated console window.
+2. Wait for the HTTP server to initialize.
+3. Automatically open your default web browser to the live dashboard page at `http://localhost:8082`.
+4. Run the Python VITA-49 stream generator in your current console.
+
+#### Option B: Manual Execution
+If you prefer running the components individually in separate terminals:
 1. **Terminal 1: Launch the Rust receiver daemon**:
    ```bash
    cargo run --features host-testing
@@ -39,5 +53,6 @@ The host simulator runs a multi-threaded virtual RP2040 pipeline with live VITA-
    ```bash
    python scripts/stream_emitter.py
    ```
+3. **Web Browser**: Open your browser and navigate to `http://localhost:8082`.
 
-The Rust pipeline will bind to `127.0.0.1:8088`, process the streaming packages in real-time, execute Kurtosis RFI masking, and output folded metrics to the dashboard console.
+The Rust pipeline binds to `127.0.0.1:8088` for UDP packet streams and serves the telemetry JSON API on port `8082`.
