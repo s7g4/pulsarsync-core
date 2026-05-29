@@ -8,6 +8,7 @@ use panic_probe as _; // Catches Rust panics and logs the stack trace over RTT
 
 pub mod buffer;
 pub mod dsp;
+pub mod folding;
 pub mod ingestion;
 pub mod pulsar;
 

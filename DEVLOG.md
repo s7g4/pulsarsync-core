@@ -101,3 +101,17 @@ Implement in-place 512-point Cooley-Tukey DIT FFT and boot-time Q1.12 CORDIC twi
 
 ### Status
 CORDIC calculation and FFT bit-reversal mechanics compiled.
+
+## Milestone 6: Phase Folding Engine
+
+### Goal
+Implement modular running-phase integrator and Newton-Raphson integer standard deviation SNR checking on Core 1.
+
+### What Broke & The Fight
+* **Integer Overflows in Variance Sum**:
+  * *Symptom*: SNR calculations fluctuated wildly and randomly dropped.
+  * *Root Cause*: Squaring the difference (diff * diff) for 1024 bins caused a 32-bit integer overflow when calculating variance.
+  * *Fix*: Cast `diff` to `u64` before multiplication and stored the accumulator `var_sum` as `u64`.
+
+### Status
+Phase folding calculations compiled. Newton-Raphson integer square root verified.

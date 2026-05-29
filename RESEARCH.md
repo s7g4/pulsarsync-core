@@ -131,3 +131,17 @@ To solve this in-place without copying memory:
 * We split the slice at the higher index: let (left, right) = buf.split_at_mut(b_idx);.
 * This yields two non-overlapping slices: left containing indices 0..b_idx and right containing b_idx..FFT_SIZE.
 * We pass &mut left[a_idx] and &mut right[0]. The compiler accepts this as completely safe because the memory regions are disjoint.
+
+## Phase 6 Research: Rotational Phase Integration & Statistics
+### 1. SNR Scaling Rationale
+A single pulse from a pulsar is typically buried deep within random thermal background noise.
+* Thermal noise is zero-mean and behaves as a random walk. Stacking periods summates noise incoherently, increasing the noise level by sqrt(N), where N is the number of folds.
+* The pulsar signal is coherent, so stacking periods aligns the pulse shape, increasing the signal amplitude linearly by N.
+* Therefore, the Signal-to-Noise Ratio (SNR) improves as:
+  SNR_final = SNR_single * sqrt(N)
+* This statistical relationship means that 10,000 folds yields a 100x improvement in SNR, allowing us to detect signals that are otherwise invisible.
+### 2. Newton-Raphson Integer Square Root
+Calculating the standard deviation requires computing a square root.
+* We approximate the square root using the Newton-Raphson formula:
+  x_(n+1) = 0.5 * (x_n + S / x_n)
+* This converges quadratically (doubling the digits of precision on each iteration) and utilizes only integer division and bit-shifts, which executes in a few dozen CPU cycles.
