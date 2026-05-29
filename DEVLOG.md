@@ -34,7 +34,7 @@ Implement raw hardware bootloader sequence to launch Core 1, and verify memory-b
 ### Status
 Dual-core boot verified. Shared atomic handshake functional.
 
-## Phase 2: Lock-Free Ring Buffer (Zero-Copy Inter-Core Transport)
+## Milestone 2: Lock-Free Ring Buffer (Zero-Copy Inter-Core Transport)
 
 ### Goal
 Implement a thread-safe SPSC ring buffer utilizing static storage and memory-aligned structures to achieve zero-copy data passing between Core 0 and Core 1.
