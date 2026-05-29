@@ -11,7 +11,7 @@ fn main() {
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 mod host_app {
     use pulsarsync_core::buffer::RING;
-    use pulsarsync_core::dsp::{dedispersion, fft};
+    use pulsarsync_core::dsp::{dedispersion, fft, rfi};
     use pulsarsync_core::folding::FoldingEngine;
     use pulsarsync_core::ingestion::adc::AdcSimulator;
     use pulsarsync_core::metrics;
@@ -62,6 +62,7 @@ mod host_app {
 
         // 3. Main thread runs Core 0 (Ingestion and DSP pipeline)
         let mut adc = AdcSimulator::new();
+        let mut rfi_filter = rfi::SpectralKurtosis::new();
 
         let mut raw_block = pulsarsync_core::buffer::SampleBlock {
             samples: [0u8; 512],
@@ -90,6 +91,9 @@ mod host_app {
 
             let mut powers = [0u16; 64];
             fft::compute_channel_powers(&fft_buf, &mut powers);
+
+            // Run Spectral Kurtosis RFI mitigation
+            rfi_filter.apply_and_update(&mut powers);
 
             // Run incoherent dedispersion delay sum
             let dedispersed_sum = dedispersion::dedisperse_and_sum(&powers);
@@ -134,7 +138,7 @@ mod app {
     use core::ptr::addr_of_mut;
     use core::sync::atomic::Ordering;
     use pulsarsync_core::buffer::RING;
-    use pulsarsync_core::dsp::{dedispersion, fft};
+    use pulsarsync_core::dsp::{dedispersion, fft, rfi};
     use pulsarsync_core::folding::FoldingEngine;
     use pulsarsync_core::ingestion::adc::AdcSimulator;
     use pulsarsync_core::metrics;
@@ -165,6 +169,7 @@ mod app {
         defmt::info!("Core 1 launched successfully — Entering main loop on Core 0");
 
         let mut adc = AdcSimulator::new();
+        let mut rfi_filter = rfi::SpectralKurtosis::new();
 
         let mut raw_block = pulsarsync_core::buffer::SampleBlock {
             samples: [0u8; 512],
@@ -190,6 +195,9 @@ mod app {
 
             let mut powers = [0u16; 64];
             fft::compute_channel_powers(&fft_buf, &mut powers);
+
+            // Run Spectral Kurtosis RFI mitigation
+            rfi_filter.apply_and_update(&mut powers);
 
             // Run incoherent dedispersion delay sum
             let dedispersed_sum = dedispersion::dedisperse_and_sum(&powers);

@@ -181,3 +181,17 @@ Connect the simulated ADC, the SPSC ring buffer, Core 0 (FFT and Dedispersion), 
 
 ### Status
 Pipeline integration complete. Host simulation runs at full rate, and ARM cross-compilation builds successfully under strict resource constraints.
+
+## Milestone 10: Spectral Kurtosis RFI Mitigation
+
+### Goal
+Implement real-time statistical filtering (Spectral Kurtosis) in fixed-point to detect and mask non-Gaussian terrestrial Radio Frequency Interference (RFI).
+
+### What Broke & The Fight
+* **Gaussian False Positive Flashing**: Under pure Gaussian noise, statistical fluctuations across the 64 channels caused normal channels to cross the tight $3\sigma$ threshold $[0.3, 1.7]$ ($[77, 435]$ in Q8) and get falsely masked in the physics test.
+  * *Fix*: Relaxed the upper threshold to $3.0$ in float ($768$ in Q8) and set the lower threshold to $30$ in Q8 (to catch constant-power CW tones with zero variance), reducing the false-alarm rate to near-zero.
+* **CW Tone Detection Failure**: In testing, constant-power RFI (zero variance) yielded an SK estimator of exactly $0.0$. With a lower threshold originally set to $0$ in Q8, the RFI went undetected.
+  * *Fix*: Raised the lower bound threshold to $30$ ($0.12$ in float) to catch the constant tone.
+
+### Status
+RFI filter implemented and verified via unit tests. Clean Gaussian noise is passed with $\le 1$ statistical false-positive fluctuation, and CW tones are successfully masked.

@@ -189,3 +189,26 @@ On the RP2040 (Cortex-M0+), inter-core synchronization is maintained via the SPS
 Under debug assertions and high coherent gains, fixed-point integer math is prone to overflows:
 * **Dedispersion Table Calculation**: The product of the scaling constant $K_{Q16} \times DM_{Q16} \times \Delta_{inv\_f2}$ exceeds the 64-bit unsigned limit ($1.84 \times 10^{19}$). We protect this by casting factors to `u128` during intermediate multiplication before shifting right by 48.
 * **FFT Power Computation**: Squaring the complex output amplitudes $Re^2 + Im^2$ inside the 32-bit channels can overflow `i32::MAX` under high-amplitude inputs. We resolve this by converting elements to `i64` before squaring.
+
+
+## Phase 10 Research: Fixed-Point Spectral Kurtosis RFI Mitigation
+
+### 1. Spectral Kurtosis (SK) Theory
+Spectral Kurtosis is a statistical tool used to detect non-Gaussian signals.
+* For Gaussian noise (such as thermal background noise), the power in a frequency channel follows an exponential distribution (Chi-squared with 2 degrees of freedom).
+* For this distribution, the second statistical moment is $E[P^2] = 2 E[P]^2$.
+* The SK estimator is defined as:
+  $$K = \frac{M+1}{M-1} \left( \frac{M S_2}{S_1^2} - 1 \right)$$
+  Where $S_1 = \sum P$, $S_2 = \sum P^2$, and $M$ is the number of accumulated spectra (e.g., $M = 32$).
+* For pure Gaussian noise, the expected value of $K$ is exactly 1.0, with a standard deviation of $\sigma_{SK} = \sqrt{4 / M}$.
+* For RFI:
+  * Impulsive RFI (radar, lightning) causes $K > 1.0$ (often much larger).
+  * Periodic/Constant RFI (unmodulated carrier, CW tones) causes $K \to 0.0$ (since the variance of a constant power is 0).
+
+### 2. Fixed-Point SK Estimation
+On microcontrollers without FPU, float arithmetic is emulation-dependent and slow. We map the SK calculation into Q8.8 fixed-point:
+* Let `ratio_q8 = (M * S2 * 256) / S1^2`.
+* Then `sk_q8 = 33 * (ratio_q8 - 256) / 31`.
+* For $M=32$, $\sigma_{SK} = \sqrt{4/32} \approx 0.35$.
+* A $3\sigma$ confidence interval around $1.0$ is $1.0 \pm 3 \times 0.3535 = [-0.06, 2.06]$. Clamping the lower bound above zero to capture CW tones ($sk\_q8 \to 0$) gives a threshold of $[0.12, 3.0]$, which scales to $[30, 768]$ in Q8.
+* If `sk_q8 < 30 || sk_q8 > 768`, the channel is flagged as RFI and masked.

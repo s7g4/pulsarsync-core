@@ -131,3 +131,52 @@ mod tests {
         );
     }
 }
+/// PROPERTY: Verify that the Spectral Kurtosis RFI filter successfully masks channels
+/// polluted by high-amplitude, non-Gaussian signals, while leaving clean Gaussian channels unmasked.
+#[test]
+fn rfi_spectral_kurtosis_masking() {
+    use pulsarsync_core::dsp::rfi::SpectralKurtosis;
+    let mut rfi = SpectralKurtosis::new();
+    let mut seed = 0x54321u32;
+    // Exponential noise generator (mean = 100) using inverse transform sampling
+    let gen_exponential_noise = |s: &mut u32| -> u16 {
+        *s = s.wrapping_mul(1103515245).wrapping_add(12345);
+        let u = ((*s >> 16) as f64 + 1.0) / 65537.0; // scale to (0, 1]
+        let val = -u.ln() * 100.0;
+        val.clamp(0.0, 65535.0) as u16
+    };
+    // Feed 32 blocks of clean exponential noise
+    for _ in 0..32 {
+        let mut powers = [0u16; 64];
+        for c in 0..64 {
+            powers[c] = gen_exponential_noise(&mut seed);
+        }
+        rfi.apply_and_update(&mut powers);
+    }
+    // Clean noise should not exceed limits, so false-positive flags should be extremely rare (<= 1)
+    assert!(
+        rfi.masked_channels_count() <= 1,
+        "Clean Gaussian noise caused excessive false-positive RFI flags: {}",
+        rfi.masked_channels_count()
+    );
+    // Feed another 32 blocks, but inject strong constant tone (RFI) into channel 15
+    for _ in 0..32 {
+        let mut powers = [0u16; 64];
+        for c in 0..64 {
+            powers[c] = gen_exponential_noise(&mut seed);
+        }
+        // Impulsive/Constant RFI on channel 15 (variance = 0)
+        powers[15] = 1000;
+        rfi.apply_and_update(&mut powers);
+    }
+    // Channel 15 should have anomalous Kurtosis and must be masked!
+    assert!(
+        rfi.is_masked(15),
+        "Failed to detect and mask strong RFI on channel 15!"
+    );
+    assert_eq!(
+        rfi.masked_channels_count(),
+        1,
+        "RFI filter masked wrong channels!"
+    );
+}
