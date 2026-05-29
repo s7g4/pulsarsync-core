@@ -25,6 +25,11 @@ defmt = "0.3.8"
 defmt-rtt = "0.4.1"
 panic-probe = { version = "0.3.2", features = ["print-defmt"] }
 
+[target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
+tiny_http = "0.12.0"
+
+
+
 [profile.release]
 codegen-units = 1
 debug = 2

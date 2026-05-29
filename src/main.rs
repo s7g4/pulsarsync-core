@@ -15,11 +15,15 @@ mod host_app {
     use pulsarsync_core::folding::FoldingEngine;
     use pulsarsync_core::ingestion::net::UdpIngestReceiver;
     use pulsarsync_core::metrics;
+    use pulsarsync_core::web;
     use std::thread;
     use std::time::Duration;
 
     pub fn main() {
         std::println!("Starting PulsarSync SDR-Appliance Host Simulator...");
+
+        // Start embedded web server on port 8082
+        web::start_server("127.0.0.1:8082");
 
         // 1. Initialize delay tables and twiddle factors
         dedispersion::build_delay_table(250_000);

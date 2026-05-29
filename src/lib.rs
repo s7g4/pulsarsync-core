@@ -39,3 +39,6 @@ pub mod folding;
 pub mod ingestion;
 pub mod metrics;
 pub mod pulsar;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub mod web;
