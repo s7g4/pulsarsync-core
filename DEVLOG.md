@@ -72,8 +72,8 @@ Implement fixed-point calculation of frequency dispersion delays for Vela pulsar
 ### What Broke & The Fight
 * **Integer Arithmetic Underflows**: In the initial delay math:
   `let inv_f2_i = 1 / (f_mhz * f_mhz)`
-  Since $f\_mhz \ge 300$, the division `1 / 90000` evaluates to `0` in standard integer math, yielding no delay differences.
-  * *Fix*: Multiplied the numerator by $2^{32}$ (shifting it left by 32 bits: `1u64 << 32`), allowing us to capture high-precision fractions under Q32.32 representation.
+  Since f_mhz >= 300, the division `1 / 90000` evaluates to `0` in standard integer math, yielding no delay differences.
+  * *Fix*: Multiplied the numerator by 2^32 (shifting it left by 32 bits: `1u64 << 32`), allowing us to capture high-precision fractions under Q32.32 representation.
 
 * **Clippy Warning Mitigations (needless_range_loop, implicit_saturating_sub, static-mut-refs)**:
   * *Symptom*: Build failures due to indexing `DELAY_TABLE` using loop ranges, manual subtraction conditions, and borrowing `DELAY_TABLE` for `iter().max()`.
@@ -188,10 +188,28 @@ Pipeline integration complete. Host simulation runs at full rate, and ARM cross-
 Implement real-time statistical filtering (Spectral Kurtosis) in fixed-point to detect and mask non-Gaussian terrestrial Radio Frequency Interference (RFI).
 
 ### What Broke & The Fight
-* **Gaussian False Positive Flashing**: Under pure Gaussian noise, statistical fluctuations across the 64 channels caused normal channels to cross the tight $3\sigma$ threshold $[0.3, 1.7]$ ($[77, 435]$ in Q8) and get falsely masked in the physics test.
-  * *Fix*: Relaxed the upper threshold to $3.0$ in float ($768$ in Q8) and set the lower threshold to $30$ in Q8 (to catch constant-power CW tones with zero variance), reducing the false-alarm rate to near-zero.
-* **CW Tone Detection Failure**: In testing, constant-power RFI (zero variance) yielded an SK estimator of exactly $0.0$. With a lower threshold originally set to $0$ in Q8, the RFI went undetected.
-  * *Fix*: Raised the lower bound threshold to $30$ ($0.12$ in float) to catch the constant tone.
+* **Gaussian False Positive Flashing**: Under pure Gaussian noise, statistical fluctuations across the 64 channels caused normal channels to cross the tight 3-sigma threshold [0.3, 1.7] ([77, 435] in Q8) and get falsely masked in the physics test.
+  * *Fix*: Relaxed the upper threshold to 3.0 in float (768 in Q8) and set the lower threshold to 30 in Q8 (to catch constant-power CW tones with zero variance), reducing the false-alarm rate to near-zero.
+* **CW Tone Detection Failure**: In testing, constant-power RFI (zero variance) yielded an SK estimator of exactly 0.0. With a lower threshold originally set to 0 in Q8, the RFI went undetected.
+  * *Fix*: Raised the lower bound threshold to 30 (0.12 in float) to catch the constant tone.
 
 ### Status
-RFI filter implemented and verified via unit tests. Clean Gaussian noise is passed with $\le 1$ statistical false-positive fluctuation, and CW tones are successfully masked.
+RFI filter implemented and verified via unit tests. Clean Gaussian noise is passed with <= 1 statistical false-positive fluctuation, and CW tones are successfully masked.
+
+## Milestone 11: Real-Time Network Ingestion (VITA-49 over UDP)
+
+### Goal
+Implement a VITA-49.0 UDP stream packet receiver to replace local simulated ADC data with live SDR network ingestion.
+
+### What Broke & The Fight
+* **SPSC Thread Safety & Aliasing Undefined Behavior (UB)**:
+  * *Symptom*: Under the initial implementation of the host simulation, clippy and rustc flagged unsafe reference pointer casts `&mut *(slot as *const _ as *mut ...)` as undefined behavior. Additionally, both Core 0 (the network receiver) and Core 1 (the folding engine) were concurrently calling `acquire_read_slot` and `release_read` on the same global SPSC `RING` buffer, causing severe index race conditions.
+  * *Fix*: Refactored the receiver interface from `process_packet` to `recv_packet(&mut self, block: &mut SampleBlock)`. Now, Core 0 receives incoming UDP packets directly into a local stack-allocated block, performs DSP channelization/filtering, and only pushes the completed 2-byte dedispersed sum to the `RING` buffer via the standard SPSC writer APIs. This guarantees single-producer single-consumer thread isolation.
+* **Bare-Metal Test Pollution**:
+  * *Symptom*: Building for the bare-metal target (`thumbv6m-none-eabi`) failed with multiple test errors (`cannot find attribute test in this scope`, `can't find crate for test`, `no method named ln found for f64`).
+  * *Root Cause*: The Spectral Kurtosis test `rfi_spectral_kurtosis_masking` was written outside the `mod tests` block, forcing the bare-metal cross-compiler to try and compile it under `#![no_std]`.
+  * *Fix*: Moved the test inside the `mod tests` block which is correctly gated behind `#[cfg(feature = "host-testing")]`.
+
+### Status
+VITA-49 UDP ingestion, sequence drop tracking, and host simulator pipeline successfully verified. All host tests pass and clippy checks for both host and bare-metal targets compile cleanly with zero warnings.
+

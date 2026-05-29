@@ -13,3 +13,5 @@
 | **M07** | `folding_sample_latency`| Execution time to fold a single sample on Core 1 | CPU cycles | < 10 | `___` | DWT Cycle Counter |
 | **M08** | `binary_text_size` | Total instruction memory footprint of the binary | Bytes | < 65,536 | **21,056** | `cargo-size` target review |
 | **M09** | `rfi_blocks_masked` | Cumulative count of FFT channel blocks zeroed by RFI filter | count | - | **0** | Atomic metrics counter |
+| **M10** | `net_packet_drops` | Cumulative count of dropped VITA-49 packet sequence gaps | count | < 100 | **0** | UDP sequence check counter |
+

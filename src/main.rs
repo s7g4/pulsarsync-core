@@ -13,7 +13,7 @@ mod host_app {
     use pulsarsync_core::buffer::RING;
     use pulsarsync_core::dsp::{dedispersion, fft, rfi};
     use pulsarsync_core::folding::FoldingEngine;
-    use pulsarsync_core::ingestion::adc::AdcSimulator;
+    use pulsarsync_core::ingestion::net::UdpIngestReceiver;
     use pulsarsync_core::metrics;
     use std::thread;
     use std::time::Duration;
@@ -61,7 +61,21 @@ mod host_app {
         });
 
         // 3. Main thread runs Core 0 (Ingestion and DSP pipeline)
-        let mut adc = AdcSimulator::new();
+        // Bind to localhost port 8088 for real-time UDP stream
+        let mut rx = match UdpIngestReceiver::bind("127.0.0.1:8088") {
+            Ok(receiver) => {
+                std::println!("Core 0 (Ingestion) bound to UDP socket 127.0.0.1:8088");
+                receiver
+            }
+            Err(e) => {
+                std::println!(
+                    "FAILED to bind UDP socket: {:?}. Falling back to ADC Simulator.",
+                    e
+                );
+                return;
+            }
+        };
+
         let mut rfi_filter = rfi::SpectralKurtosis::new();
 
         let mut raw_block = pulsarsync_core::buffer::SampleBlock {
@@ -70,13 +84,17 @@ mod host_app {
             block_index: 0,
         };
 
-        std::println!("Core 0 (Ingestion & DSP) simulation loop running...");
+        std::println!("Core 0 (Ingestion & DSP) network socket loop running...");
         let mut block_index = 0;
 
         loop {
-            adc.fill_block(&mut raw_block);
+            // 3a. Read a VITA-49 network packet from UDP socket into local raw_block
+            if let Err(e) = rx.recv_packet(&mut raw_block) {
+                std::println!("Network ingest error: {:?}", e);
+                continue;
+            }
 
-            // Channelize using in-place FFT
+            // 3b. Channelize using in-place FFT
             let mut fft_buf = [fft::FixedComplex::default(); fft::FFT_SIZE];
             for (bin, &sample) in fft_buf.iter_mut().zip(raw_block.samples.iter()) {
                 let val = (sample as i16 - 128) << 4;
@@ -121,6 +139,7 @@ mod host_app {
             }
 
             block_index += 1;
+            // Stop after processing standard integration block
             if block_index >= 12_000 {
                 std::println!("Simulation run completed (12,000 blocks processed).");
                 break;

@@ -11,7 +11,7 @@ At a sample rate of 250 kHz (512 bytes per block = ~2 ms processing window), any
 We will implement a static, lock-free, Single-Producer Single-Consumer (SPSC) ring buffer using atomic operations with explicit memory ordering.
 
 ## Rationale
-1. **Zero-Copy Design**: Copying $512\text{ bytes}$ takes hundreds of CPU cycles. To achieve zero-copy, we allocate a static array of raw sample blocks (`BLOCK_POOL`) in BSS memory. Core 0/1 acquire direct references (pointers) to the memory blocks, avoiding memory copies.
+1. **Zero-Copy Design**: Copying 512 bytes takes hundreds of CPU cycles. To achieve zero-copy, we allocate a static array of raw sample blocks (`BLOCK_POOL`) in BSS memory. Core 0/1 acquire direct references (pointers) to the memory blocks, avoiding memory copies.
 2. **Lock-Free Atomic Coordination**: The queue maintains two atomic pointers: `head` (updated only by Core 1, read by Core 0) and `tail` (updated only by Core 0, read by Core 1). We use `Acquire` and `Release` ordering constraints to ensure cache and memory synchronization.
 3. **Power-of-Two Capacity Masking**: Cortex-M0+ lacks a hardware divider. By enforcing that `CAPACITY` is a power of two, we can replace the modulo operation with a bitwise AND: `index & (CAPACITY - 1)`. This runs in a single clock cycle.
 

@@ -24,10 +24,10 @@ The CORDIC algorithm calculates trigonometric functions by executing a series of
 This matches the limited execution unit of the Cortex-M0+, which lacks a hardware divider and has limited multipliers.
 
 ### 2. Q12 Scaled Fixed-Point Output
-The resulting cos/sin values are scaled by $2^{12} = 4096$ to fit into a signed 16-bit integer (`i16`). This matches the input requirement of our Cooley-Tukey butterfly stage, which performs Q12 complex multiplication via signed 32-bit intermediate variables:
+The resulting cos/sin values are scaled by 2^12 = 4096 to fit into a signed 16-bit integer (`i16`). This matches the input requirement of our Cooley-Tukey butterfly stage, which performs Q12 complex multiplication via signed 32-bit intermediate variables:
 Re(A * B) = (Re(A)*Re(B) - Im(A)*Im(B)) / 4096 = (A_re * B_re - A_im * B_im) >> 12
 
 ## Consequences
 * We must store a static lookup table of 12 arctangent angles in micro-radians:
-  $$\theta_j = \arctan(2^{-j})$$
-* Twiddle factor initialization executes at startup, taking approximately $3000$ clock cycles ($22.5\ \mu\text{s}$ at $133\text{ MHz}$), which is completely negligible for a boot-stage routine.
+  theta_j = arctan(2^-j)
+* Twiddle factor initialization executes at startup, taking approximately 3000 clock cycles (22.5 microseconds at 133 MHz), which is completely negligible for a boot-stage routine.

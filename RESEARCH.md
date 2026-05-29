@@ -52,12 +52,12 @@ Generating standard random noise in embedded targets using traditional LCG (Line
 * For our 32-bit state register, the feedback taps are chosen at positions 32, 22, 2, and 1.
 * Code implementation:
   `self.lfsr ^= self.lfsr << 13; self.lfsr ^= self.lfsr >> 17; self.lfsr ^= self.lfsr << 5;`
-* This achieves a maximal cycle period of $2^{32} - 1$ steps before repeating, executing in only 3 CPU instructions.
+* This achieves a maximal cycle period of 2^32 - 1 steps before repeating, executing in only 3 CPU instructions.
 
 ### 2. Register-Width Bus Alignment (Pseudo-SIMD)
 * The Cortex-M0+ bus interface is 32 bits wide.
 * Normal byte writes (`STRB`) update 8 bits at a time, leaving 24 bits of the memory bus bandwidth idle.
-* By aligning the buffer to 4 bytes (`#[repr(C, align(4))]`) and using `chunks_exact_mut(4)`, we force the compiler to emit `STR` (Store Register) instructions. This writes 4 samples concurrently, utilizing $100\%$ of the bus bandwidth.
+* By aligning the buffer to 4 bytes (`#[repr(C, align(4))]`) and using `chunks_exact_mut(4)`, we force the compiler to emit `STR` (Store Register) instructions. This writes 4 samples concurrently, utilizing 100% of the bus bandwidth.
 
 ## Phase 4 Research: Cold Plasma Dispersion Mechanics
 
@@ -68,18 +68,18 @@ Where f_p is the plasma frequency of the medium (typically ~10 kHz in the inters
 Delta_t = 4.15 * 10^6 * DM * (f_lo^-2 - f_hi^-2) ms
 
 ### 2. Fixed-Point Scaling Math (Q16.16 and Q32.32)
-* To calculate the delay, we multiply a large scaling constant $K = 4,150,000$ by $DM = 67.97$ and a very small frequency difference $\left(f_i^{-2} - f_{\text{hi}}^{-2}\right)$.
-* To prevent intermediate multiplication overflows under 32-bit registers, we scale $K$ into Q16.16 (yielding a 64-bit value) and calculate the fractional inverse frequency squares in Q32.32. The result is then scaled back to integer sample indices.
+* To calculate the delay, we multiply a large scaling constant K = 4,150,000 by DM = 67.97 and a very small frequency difference (f_i^-2 - f_hi^-2).
+* To prevent intermediate multiplication overflows under 32-bit registers, we scale K into Q16.16 (yielding a 64-bit value) and calculate the fractional inverse frequency squares in Q32.32. The result is then scaled back to integer sample indices.
 
-## Phase 5 Research: Fixed-Point FFT & CORDIC Trignometry
+## Phase 5 Research: Fixed-Point FFT & CORDIC Trigonometry
 
 ### 1. Cooley-Tukey Butterfly Complexity
-The Cooley-Tukey Radix-2 Decimation-in-Time (DIT) algorithm reduces the DFT complexity from $O(N^2)$ to $O(N \log_2 N)$. 
-* For $N = 512$, the stages are $\log_2(512) = 9$.
-* In each stage, we execute $N/2 = 256$ butterfly operations.
-* Total butterflies = $9 \times 256 = 2304$ butterflies.
+The Cooley-Tukey Radix-2 Decimation-in-Time (DIT) algorithm reduces the DFT complexity from O(N^2) to O(N * log2(N)).
+* For N = 512, the stages are log2(512) = 9.
+* In each stage, we execute N/2 = 256 butterfly operations.
+* Total butterflies = 9 * 256 = 2304 butterflies.
 * Each butterfly requires 4 multiplications and 4 additions.
-* Since Cortex-M0+ multiplication `MUL` executes in a single cycle, the arithmetic calculations are extremely fast, taking approximately $27,000$ clock cycles ($0.2\text{ ms}$ at $133\text{ MHz}$).
+* Since Cortex-M0+ multiplication `MUL` executes in a single cycle, the arithmetic calculations are extremely fast, taking approximately 27,000 clock cycles (0.2 ms at 133 MHz).
 
 ### 2. Cooley-Tukey In-Place Split Borrowing
 Rust enforces strict aliasing rules: we cannot borrow two elements from the same array as mutable at the same time (`&mut array[a]` and `&mut array[b]`).
@@ -187,8 +187,8 @@ On the RP2040 (Cortex-M0+), inter-core synchronization is maintained via the SPS
 * Arithmetic metrics are incremented via atomic load-and-store operations. Since each metric has a single writer core (Core 0 for ingestion/FFT, Core 1 for folds/telemetry), read-modify-write race hazards are physically impossible, allowing lock-free telemetry logging.
 ### 3. Fixed-Point Arithmetic Overflow Protections
 Under debug assertions and high coherent gains, fixed-point integer math is prone to overflows:
-* **Dedispersion Table Calculation**: The product of the scaling constant $K_{Q16} \times DM_{Q16} \times \Delta_{inv\_f2}$ exceeds the 64-bit unsigned limit ($1.84 \times 10^{19}$). We protect this by casting factors to `u128` during intermediate multiplication before shifting right by 48.
-* **FFT Power Computation**: Squaring the complex output amplitudes $Re^2 + Im^2$ inside the 32-bit channels can overflow `i32::MAX` under high-amplitude inputs. We resolve this by converting elements to `i64` before squaring.
+* **Dedispersion Table Calculation**: The product of the scaling constant K_Q16 * DM_Q16 * Delta_inv_f2 exceeds the 64-bit unsigned limit (1.84 * 10^19). We protect this by casting factors to `u128` during intermediate multiplication before shifting right by 48.
+* **FFT Power Computation**: Squaring the complex output amplitudes Re^2 + Im^2 inside the 32-bit channels can overflow `i32::MAX` under high-amplitude inputs. We resolve this by converting elements to `i64` before squaring.
 
 
 ## Phase 10 Research: Fixed-Point Spectral Kurtosis RFI Mitigation
@@ -196,19 +196,43 @@ Under debug assertions and high coherent gains, fixed-point integer math is pron
 ### 1. Spectral Kurtosis (SK) Theory
 Spectral Kurtosis is a statistical tool used to detect non-Gaussian signals.
 * For Gaussian noise (such as thermal background noise), the power in a frequency channel follows an exponential distribution (Chi-squared with 2 degrees of freedom).
-* For this distribution, the second statistical moment is $E[P^2] = 2 E[P]^2$.
+* For this distribution, the second statistical moment is E[P^2] = 2 * E[P]^2.
 * The SK estimator is defined as:
-  $$K = \frac{M+1}{M-1} \left( \frac{M S_2}{S_1^2} - 1 \right)$$
-  Where $S_1 = \sum P$, $S_2 = \sum P^2$, and $M$ is the number of accumulated spectra (e.g., $M = 32$).
-* For pure Gaussian noise, the expected value of $K$ is exactly 1.0, with a standard deviation of $\sigma_{SK} = \sqrt{4 / M}$.
+  K = ((M + 1) / (M - 1)) * ((M * S2 / S1^2) - 1)
+  Where S1 = sum(P), S2 = sum(P^2), and M is the number of accumulated spectra (e.g., M = 32).
+* For pure Gaussian noise, the expected value of K is exactly 1.0, with a standard deviation of sigma_SK = sqrt(4 / M).
 * For RFI:
-  * Impulsive RFI (radar, lightning) causes $K > 1.0$ (often much larger).
-  * Periodic/Constant RFI (unmodulated carrier, CW tones) causes $K \to 0.0$ (since the variance of a constant power is 0).
+  * Impulsive RFI (radar, lightning) causes K > 1.0 (often much larger).
+  * Periodic/Constant RFI (unmodulated carrier, CW tones) causes K -> 0.0 (since the variance of a constant power is 0).
 
 ### 2. Fixed-Point SK Estimation
 On microcontrollers without FPU, float arithmetic is emulation-dependent and slow. We map the SK calculation into Q8.8 fixed-point:
 * Let `ratio_q8 = (M * S2 * 256) / S1^2`.
 * Then `sk_q8 = 33 * (ratio_q8 - 256) / 31`.
-* For $M=32$, $\sigma_{SK} = \sqrt{4/32} \approx 0.35$.
-* A $3\sigma$ confidence interval around $1.0$ is $1.0 \pm 3 \times 0.3535 = [-0.06, 2.06]$. Clamping the lower bound above zero to capture CW tones ($sk\_q8 \to 0$) gives a threshold of $[0.12, 3.0]$, which scales to $[30, 768]$ in Q8.
+* For M=32, sigma_SK = sqrt(4/32) approx 0.35.
+* A 3-sigma confidence interval around 1.0 is 1.0 +/- 3 * 0.3535 = [-0.06, 2.06]. Clamping the lower bound above zero to capture CW tones (sk_q8 -> 0) gives a threshold of [0.12, 3.0], which scales to [30, 768] in Q8.
 * If `sk_q8 < 30 || sk_q8 > 768`, the channel is flagged as RFI and masked.
+
+## Phase 11 Research: Real-Time Network Ingestion & VITA-49.0 Transport
+
+### 1. VITA-49.0 (VITA Radio Transport, VRT) Protocol Standards
+VITA-49.0 is a standardized data exchange format for software-defined radio (SDR) receivers and digitizer nodes. It encapsulates RF samples alongside accurate metadata to simplify multi-vendor receiver integration:
+* **VRT Data Packets**: Carry raw digitized signal samples (IQ or real IF). In our architecture, we ingest 8-bit real IF time-domain samples.
+* **VRT Packet Header Structure**:
+  * **Word 0 (32 bits)**: Header flags (Packet Type, Class ID Indicator, Stream ID Indicator, Timestamp Mode) and sequence counter (4 bits, modulo 16) alongside packet size in 32-bit words (16 bits).
+  * **Word 1 (32 bits)**: Stream Identifier to isolate specific digitized antenna signals.
+  * **Word 2 (32 bits)**: Epoch integer timestamp (UTC seconds).
+  * **Word 3 & 4 (64 bits)**: Fractional timestamp specifying sample-accurate picoseconds offset from the epoch start.
+  * **Payload (512 bytes)**: The raw digitized sample array.
+
+### 2. High-Rate UDP Transport & Packet Loss Analysis
+We transport VITA-49 packets over UDP rather than TCP. Because TCP requires retransmissions and windowing handshakes, a single drop on a high-speed network blocks the entire thread, leading to socket receiver buffer overflows and massive cascading sample drops. 
+* To detect and log network drops without TCP overhead, the ingestion layer tracks the 4-bit sequence counter of the incoming packet header.
+* We calculate sequence drops dynamically:
+  `sequence_gap = (seq_num - expected_seq) & 0x0F`
+* Any sequence gap `sequence_gap > 0` indicates packet drops over the network socket, which is logged atomically in `net_packet_drops`.
+
+### 3. Stack Allocation & SPSC Memory Boundaries
+By choosing a VITA-49 payload size of 512 bytes, we map it 1-to-1 to the size of a single pipeline block (`BLOCK_SIZE = 512` bytes):
+* This removes the need for slicing, formatting, or copying samples to intermediate buffers.
+* Core 0 reads incoming UDP payloads directly into a stack-allocated local block. It runs in-place channelization and Kurtosis filtering on this local block before committing the 2-byte processed sum to the SPSC queue. This isolates memory operations, preventing multiple threads from racing on identical ring index pointers.
