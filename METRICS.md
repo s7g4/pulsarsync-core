@@ -11,4 +11,4 @@
 | **M05** | `memcpy_count` | Number of raw block data memory copies in hot path| count | 0 | **0** | Static code review (zero-copy) |
 | **M06** | `fft_execution_time` | Computation latency for 512-point fixed-point FFT | microseconds | < 500 | `___` | DWT Cycle Counter |
 | **M07** | `folding_sample_latency`| Execution time to fold a single sample on Core 1 | CPU cycles | < 10 | `___` | DWT Cycle Counter |
-| **M08** | `binary_text_size` | Total instruction memory footprint of the binary | Bytes | < 65,536 | `___` | `cargo-size` target review |
+| **M08** | `binary_text_size` | Total instruction memory footprint of the binary | Bytes | < 65,536 | **21,056** | `cargo-size` target review |

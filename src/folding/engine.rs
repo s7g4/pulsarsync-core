@@ -67,8 +67,6 @@ impl FoldingEngine {
 
         let mut sum: u64 = 0;
         let mut peak: u32 = 0;
-
-        // Calculate sum and find peak
         for idx in 0..N_BINS {
             let val = unsafe { bins_ptr.add(idx).read() };
             sum += val as u64;
@@ -76,34 +74,57 @@ impl FoldingEngine {
                 peak = val;
             }
         }
-
         let mean = (sum / N_BINS as u64) as u32;
-
-        // Calculate variance
         let mut var_sum: u64 = 0;
         for idx in 0..N_BINS {
             let val = unsafe { bins_ptr.add(idx).read() };
             let diff = val.abs_diff(mean) as u64;
             var_sum += diff * diff;
         }
-
         let variance = var_sum / N_BINS as u64;
         let std_dev = integer_sqrt(variance) as u32;
-
         if std_dev == 0 {
             return 0;
         }
-
         (peak - mean) / std_dev
     }
-
+    /// Retrieve the value of a specific phase bin safely from the static storage
+    pub fn get_bin(&self, index: usize) -> u32 {
+        if index < N_BINS {
+            unsafe {
+                let bins_ptr = addr_of!(PROFILE_BINS) as *const u32;
+                bins_ptr.add(index).read()
+            }
+        } else {
+            0
+        }
+    }
     /// Get current fold count (number of period cycles completed)
     pub fn get_fold_count(&self) -> u64 {
         unsafe { addr_of!(FOLD_COUNT).read() }
     }
+    /// Fold a block-integrated power measurement at a specific hardware timestamp.
+    /// Maps the timestamp to a rotational phase bin and accumulates power in fixed-point.
+    pub fn fold_block(&mut self, timestamp_ticks: u64, power: u16) {
+        let phase = timestamp_ticks % PULSAR_PERIOD_TICKS;
+        let bin = (phase * N_BINS as u64 / PULSAR_PERIOD_TICKS) as usize;
+        if bin < N_BINS {
+            let bins_ptr = addr_of_mut!(PROFILE_BINS) as *mut u32;
+            unsafe {
+                let current_val = bins_ptr.add(bin).read();
+                bins_ptr
+                    .add(bin)
+                    .write(current_val.saturating_add(power as u32));
+            }
+        }
+        self.samples_processed += 512; // A block represents 512 samples
+        unsafe {
+            let fold_ptr = addr_of_mut!(FOLD_COUNT);
+            fold_ptr.write(self.samples_processed / PULSAR_PERIOD_TICKS);
+        }
+    }
 }
-
-/// Integer square root calculation via Newton-Raphson approximation
+/// Standalone helper function (outside the impl block)
 fn integer_sqrt(n: u64) -> u64 {
     if n == 0 {
         return 0;

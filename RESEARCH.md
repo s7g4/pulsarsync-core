@@ -145,3 +145,47 @@ Calculating the standard deviation requires computing a square root.
 * We approximate the square root using the Newton-Raphson formula:
   x_(n+1) = 0.5 * (x_n + S / x_n)
 * This converges quadratically (doubling the digits of precision on each iteration) and utilizes only integer division and bit-shifts, which executes in a few dozen CPU cycles.
+
+## Phase 7 Research: Telemetry Design & Parsing Architectures
+
+### 1. Lock-Free Diagnostics via Relaxed Atomics
+Telemetry collection occurs inside performance-critical hot loops (e.g., ingestion threads and DSP loops).
+* To prevent measuring diagnostics from slowing down the system, we use `Relaxed` atomic memory ordering (`Ordering::Relaxed`) for all metrics counters.
+* Since the diagnostic values do not coordinate thread execution or guard other variable states (which would require Acquire/Release constraints), `Relaxed` compiles directly to simple atomic register writes (e.g., `ADD` on memory), incurring zero CPU stalls.
+
+### 2. High-Performance RTT Streaming
+* RTT (Real-Time Transfer) utilizes circular buffers located directly in RAM.
+* The debug probe writes/reads these buffers over the SWD physical interface at multi-megabit speeds, running concurrently with CPU execution.
+* The "PROFILE_BIN i val" format utilizes structured string formats. The actual binary does not format the string; `defmt` sends only the compressed format string ID and raw binary arguments over RTT. The host computer parses and inflates the strings.
+
+## Phase 8 Research: Verification Mathematics & Script Pipelines
+
+### 1. Parseval's Theorem Validation
+Parseval's theorem states that the sum of the square of a signal is equal to the sum of the square of its Fourier Transform.
+For a discrete signal of size N:
+Sum( |x[n]|^2 ) = (1 / N) * Sum( |X[k]|^2 )
+In our Q12 fixed-point FFT:
+* Rounding errors and quantization noise occur because each butterfly scaling drops the least significant bits.
+* We verify this in our tests by asserting that the energy before and after the transform matches within a 5% error tolerance.
+
+### 2. Signal-to-Noise Ratio (SNR) Convergence
+A synthetic pulsar signal injected into Gaussian noise must converge during folding integration.
+* The noise floor averages out to zero while the periodic signal grows with the number of periods folded.
+* We test this by folding 1,000 synthetic periods. We calculate the SNR using:
+  SNR = (Peak - Mean) / StdDev
+  Where StdDev is computed using the Newton-Raphson integer square root method.
+* If the SNR exceeds 8.0, the pipeline is verified.
+
+## Phase 9 Research: Real-Time Inter-Core Pipeline & Arithmetic Overflow Protections
+### 1. Unified Inter-Core Flow Model
+With the pipeline wired up, Core 0 and Core 1 operate as a synchronized stream-processing topology.
+* **Core 0 (High-Speed DSP)**: Processes raw time-domain sample blocks of size 512. It performs FFT to channelize, groups bins to compute 64 channel powers, and executes incoherent dedispersion.
+* **Core 1 (Integrated Science)**: Consumes the processed blocks from the SPSC ring buffer, maps timestamps to phase bins, folds power measurements, and publishes metrics.
+### 2. Multi-Core Scaling and Critical Sections
+On the RP2040 (Cortex-M0+), inter-core synchronization is maintained via the SPSC ring buffer's Atomic indices using memory fences.
+* The single-writer rule (Core 0 writes `tail`, Core 1 writes `head`) ensures lock-free execution.
+* Arithmetic metrics are incremented via atomic load-and-store operations. Since each metric has a single writer core (Core 0 for ingestion/FFT, Core 1 for folds/telemetry), read-modify-write race hazards are physically impossible, allowing lock-free telemetry logging.
+### 3. Fixed-Point Arithmetic Overflow Protections
+Under debug assertions and high coherent gains, fixed-point integer math is prone to overflows:
+* **Dedispersion Table Calculation**: The product of the scaling constant $K_{Q16} \times DM_{Q16} \times \Delta_{inv\_f2}$ exceeds the 64-bit unsigned limit ($1.84 \times 10^{19}$). We protect this by casting factors to `u128` during intermediate multiplication before shifting right by 48.
+* **FFT Power Computation**: Squaring the complex output amplitudes $Re^2 + Im^2$ inside the 32-bit channels can overflow `i32::MAX` under high-amplitude inputs. We resolve this by converting elements to `i64` before squaring.

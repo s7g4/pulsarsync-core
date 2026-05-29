@@ -115,3 +115,69 @@ Implement modular running-phase integrator and Newton-Raphson integer standard d
 
 ### Status
 Phase folding calculations compiled. Newton-Raphson integer square root verified.
+
+## Milestone 7: Observability & Scientific Dashboard
+
+### Goal
+Implement atomic telemetry counters, idle-stage diagnostic printing, and structured RTT profiles dumping.
+
+### What Broke & The Fight
+* **Static Array Borrow Conflicts**:
+  * *Symptom*: Accessing the raw `PROFILE_BINS` static mut array inside `metrics.rs` caused compilation issues due to illegal static mut references.
+  * *Fix*: Implemented a clean getter method `get_bin` on the `FoldingEngine` struct. This hides the internal static mut array, resolves warnings, and encapsulates memory accesses.
+
+* **Linker Failure: E0432 missing AtomicU64 on 32-bit targets**:
+  * *Symptom*: Build failed stating `no AtomicU64 in sync::atomic`.
+  * *Root Cause*: Cortex-M0+ is a 32-bit hardware target and does not implement 64-bit atomic operations.
+  * *Fix*: Replaced `AtomicU64` with `AtomicU32` for all metrics.
+
+### Status
+Telemetry subsystem functional. Raw profile data stream output ready for host capture.
+
+## Milestone 8: CI/CD, Testing & Host-Side Analysis
+
+### Goal
+Implement continuous integration pipelines, write local unit tests for signal processing mathematics (Parseval's energy conservation, folding scaling, SNR regression), and design a live console-based plot visualizer.
+
+### What Broke & The Fight
+* **Linker Failure: E0425 invalid assembly register on host target**:
+  * *Symptom*: Build failed compiling `cortex-m` on host PC due to unknown register `r0` and inline assembly issues.
+  * *Root Cause*: `cortex-m` was in the general dependencies block, causing Cargo to compile ARM assembly on an x86 host.
+  * *Fix*: Moved both `cortex-m` and `cortex-m-rt` to the target-specific dependency block inside `Cargo.toml`.
+* **Linker Failure: Unresolved defmt externals on host**:
+  * *Symptom*: Unresolved external symbols `_defmt_write` when compiling tests on the host.
+  * *Root Cause*: `defmt` was compiled on the host but lacked hardware RTT log hooks.
+  * *Fix*: Moved `defmt` to target-specific dependencies. Created a target-conditional re-export in `lib.rs` that imports `defmt` on hardware and mocks it with standard `std::println!` on the host.
+
+* **Cargo Test Compiles failing on no_std**:
+  * *Symptom*: Build failed under `cargo test` stating `can't find crate for test` and `#[panic_handler] function required, but not found`.
+  * *Root Cause*: The default Rust test runner requires `std`, but our library was locked in `#![no_std]`.
+  * *Fix*: Applied `cfg_attr(not(feature = "host-testing"), no_std)` to both `lib.rs` and `main.rs`, and configured `test = false` on the binary target inside `Cargo.toml`.
+
+* **Linker Failure: E0425 invalid assembly register on host target**:
+  * *Symptom*: Build failed compiling `cortex-m` on host PC due to unknown register `r0` and inline assembly issues.
+  * *Root Cause*: `cortex-m` was in the general dependencies block, causing Cargo to compile ARM assembly on an x86 host.
+  * *Fix*: Moved both `cortex-m` and `cortex-m-rt` to the target-specific dependency block inside `Cargo.toml`.
+
+* **Linker Failure: Unresolved defmt externals on host**:
+  * *Symptom*: Unresolved external symbols `_defmt_write` when compiling tests on host.
+  * *Root Cause*: `defmt` was compiled on host but lacked hardware RTT log hooks.
+  * *Fix*: Moved `defmt` to target-specific dependencies. Created a target-conditional re-export in `lib.rs` that imports `defmt` on hardware and mocks it with standard `std::println!` on host.
+
+### Status
+Verification suite completed, target isolation established.
+
+
+## Milestone 9: Real-Time Integrated Processing Pipeline
+
+### Goal
+Connect the simulated ADC, the SPSC ring buffer, Core 0 (FFT and Dedispersion), Core 1 (Folding), and metrics into a fully operational inter-core pipeline.
+
+### What Broke & The Fight
+* **Integer Arithmetic Overflow in Dedispersion Table**: Multiplicand product `K * DM * Delta` exceeded `u64::MAX` in debug checks, crashing the host simulation.
+  * *Fix*: Cast variables to `u128` during intermediate multiplication to protect against overflow, and shift right before casting back to `u64`.
+* **Integer Arithmetic Overflow in FFT Power Aggregation**: Squaring FFT bin amplitudes `re * re + im * im` inside the 32-bit `i32` channels exceeded `i32::MAX`, causing overflow panics.
+  * *Fix*: Cast bin values to `i64` before squaring to handle large coherent gains safely.
+
+### Status
+Pipeline integration complete. Host simulation runs at full rate, and ARM cross-compilation builds successfully under strict resource constraints.

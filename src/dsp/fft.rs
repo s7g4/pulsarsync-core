@@ -173,3 +173,23 @@ fn bit_reverse(mut x: usize, bits: usize) -> usize {
     }
     result
 }
+
+/// Channel power binning: aggregates 512 complex FFT bins into 64 frequency channels.
+/// Group size = 512 bins / 2 (positive frequencies) / 64 channels = 4 bins per channel.
+pub fn compute_channel_powers(fft_buf: &[FixedComplex; FFT_SIZE], out_powers: &mut [u16; 64]) {
+    for (c, out_power) in out_powers.iter_mut().enumerate() {
+        let mut sum_power = 0u32;
+        for b in 0..4 {
+            let idx = c * 4 + b;
+            let re = fft_buf[idx].re as i64;
+            let im = fft_buf[idx].im as i64;
+
+            // Power = Re^2 + Im^2.
+            // Shift right by 12 divides out the double scaling factor (Q1.12 * Q1.12 = Q2.24).
+            let p = ((re * re) + (im * im)) >> 12;
+            sum_power += p as u32;
+        }
+        // Take the average of the 4 bins and clamp to u16 range
+        *out_power = (sum_power / 4).clamp(0, u16::MAX as u32) as u16;
+    }
+}
