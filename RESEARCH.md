@@ -236,3 +236,51 @@ We transport VITA-49 packets over UDP rather than TCP. Because TCP requires retr
 By choosing a VITA-49 payload size of 512 bytes, we map it 1-to-1 to the size of a single pipeline block (`BLOCK_SIZE = 512` bytes):
 * This removes the need for slicing, formatting, or copying samples to intermediate buffers.
 * Core 0 reads incoming UDP payloads directly into a stack-allocated local block. It runs in-place channelization and Kurtosis filtering on this local block before committing the 2-byte processed sum to the SPSC queue. This isolates memory operations, preventing multiple threads from racing on identical ring index pointers.
+
+
+## Phase 12 Research: Embedded HTTP Dashboard & DPI-Aware Canvas Visualization
+
+### 1. Minimal Footprint Web Services on Host Daemon
+Standard enterprise Rust web frameworks (e.g. `axum`, `actix-web`) pull in large runtime dependencies like Tokio, hyper, and heavy asynchronous macros. This increases the host executable size by several megabytes and introduces compilation overhead.
+* To maintain a minimal memory footprint and fast compile times, we select `tiny-http`.
+* `tiny-http` is a thin wrapper around a single-threaded TCP socket listener loop. It runs on a background thread spawned by the main host program, consuming negligible CPU resources.
+* The web server handles HTTP requests synchronously:
+  * `/` maps to `include_str!("../../html/index.html")` which compiles the dashboard page directly into the binary instructions, eliminating external file reading overhead at runtime.
+  * `/api/metrics` formats system metrics into a JSON string using atomic registers (`Relaxed` ordering).
+  * `/api/profile` queries the global `static mut PROFILE_BINS` array through safe slice interfaces, avoiding complex heap allocations.
+
+### 2. High-Performance HTML Canvas Rendering and DPI-Scaling
+Rendering high-frequency (250Hz updates) time-series data using heavy Javascript chart libraries (e.g. Chart.js, D3.js) degrades browser thread performance, causing visible visual lag.
+* We implement custom rendering using the native HTML Canvas 2D API (`CanvasRenderingContext2D`).
+* **High-DPI Canvas Blur Mitigation**:
+  On Retina or high-DPI displays, the browser maps one logical CSS pixel to multiple physical screen pixels (defined by `window.devicePixelRatio`). Standard canvas definitions draw at logical sizes, resulting in blurry, scaled-up line profiles.
+  To solve this, we dynamically adjust the canvas's internal drawing surface coordinates:
+  ```javascript
+  const dpi = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpi;
+  canvas.height = rect.height * dpi;
+  ctx.scale(dpi, dpi);
+  ```
+  This forces the browser to render the signal line at native hardware resolution.
+* **Visual Styling**:
+  We apply sleek, dark-mode styling (Vela Nebula-inspired palette). The area beneath the profile curve is filled with a multi-stop vertical linear gradient transitioning from semi-transparent cyan (`rgba(0, 229, 255, 0.12)`) to transparent black.
+
+## Phase 13 Research: Production Containerization & Live Simulation Validation
+
+### 1. Multi-Stage Docker Build Strategy
+Compiling and running systems applications inside Docker containers can result in bloated images if build dependencies are left in the runtime environment.
+* **Stage 1 (Compilation)**:
+  Uses the official `rust:1.82-slim` image to build the gateway. We copy target configurations and source files, and run `cargo build --release --features host-testing`. This layer contains compiler tools, Cargo caches, and intermediate build artifacts (~2.2 GB).
+* **Stage 2 (Runtime)**:
+  Uses the clean, lightweight `debian:bookworm-slim` image. We copy only the compiled static executable (`pulsarsync-core`) and expose ports `8082` (web server) and `8088/udp` (VITA-49 data). This final image is only ~76 MB, ensuring rapid deployment and minimized security attack surfaces.
+
+### 2. Real-Time Packet Generation and RFI Injection
+To validate the SDR-Appliance end-to-end without physical hardware, we construct a Python-based VITA-49 packet generator (`scripts/stream_emitter.py`).
+* **VITA-49.0 Encoding**:
+  Encodes structured packets using Python's `struct` library. Each packet carries a 20-byte VRT header containing type flags, sequence count (modulo 16), Epoch seconds, fractional sample-accurate ticks, and a 512-byte payload.
+* **Radio Physics Simulation**:
+  * **Thermal Noise**: Generates Gaussian random variables centered at byte mid-point 128.
+  * **Coherent Signal Accumulation**: Injects Vela pulsar pulses at rotational phase boundaries (`tick % 22332 < 400`).
+  * **Non-Gaussian RFI Injection**: Simulates terrestrial interference by overlaying a 30.2 kHz continuous sine wave onto the sample stream. The RFI is cycled on/off dynamically (active for 6 seconds, inactive for 8 seconds) to test the Spectral Kurtosis filter's real-time masking response.
+* **Real-Time Pacing**:
+  Calculates exact elapsed time since startup and compares it against expected sample ticks. The socket thread sleeps dynamically to maintain the physical sample rate of 250,000 samples per second.

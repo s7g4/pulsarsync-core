@@ -213,3 +213,33 @@ Implement a VITA-49.0 UDP stream packet receiver to replace local simulated ADC 
 ### Status
 VITA-49 UDP ingestion, sequence drop tracking, and host simulator pipeline successfully verified. All host tests pass and clippy checks for both host and bare-metal targets compile cleanly with zero warnings.
 
+## Milestone 12: Integrated Web Dashboard (Rust Web Server + Canvas UI)
+
+### Goal
+Integrate a lightweight embedded HTTP server on the host gateway daemon to serve real-time telemetry endpoints and a high-fidelity visualizer dashboard.
+
+### What Broke & The Fight
+* **Windows WSAEACCES Port Binding Conflict**:
+  * *Symptom*: Running the gateway application on the default port `8080` threw a `Permission Denied` socket exception (`WSAEACCES`) on Windows development PCs.
+  * *Root Cause*: Windows reserves blocks of ports (including `8080`) for system services or hypervisors (like Hyper-V).
+  * *Fix*: Swapped the default HTTP port configuration to `8082`, which is outside the standard reserved ranges, resolving the binding conflict.
+* **Canvas Resolution Blur (High-DPI Devices)**:
+  * *Symptom*: The canvas-rendered pulsar profile line looked pixelated and blurry on screens with high pixel density (Retina/High-DPI).
+  * *Fix*: Implemented DPI-aware rendering inside the canvas chart script. The script queries `window.devicePixelRatio`, scales the canvas's internal bitmap drawing size, and uses CSS styles to constrain the physical viewport dimensions.
+
+### Status
+HTTP telemetry daemon functional. Modern, high-performance canvas visualizer successfully renders real-time folded profiles at `http://localhost:8082`.
+
+
+## Milestone 13: Docker Packaging & Verification
+
+### Goal
+Package the host gateway application in a lightweight, containerized environment using multi-stage Docker builds and orchestrate it using Docker Compose.
+
+### What Broke & The Fight
+* **Large Compiler Images in Runtime Containers**:
+  * *Symptom*: The initial Docker image size exceeded 2.2 GB because the full Rust build toolchain was included in the final layer.
+  * *Fix*: Implemented a multi-stage Dockerfile. Stage 1 (`rust:1.82-slim` AS builder) installs system tools and compiles the optimized host executable. Stage 2 (`debian:bookworm-slim`) copies *only* the compiled binary and exposes the necessary ports. This reduces the production container size to under 80 MB.
+
+### Status
+Docker compilation and compose configurations completed. End-to-end local stream ingestion pipeline verified. The entire SDR-appliance can be initialized using `docker-compose up`.

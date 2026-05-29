@@ -13,4 +13,4 @@ rustflags = [
 bloat   = "bloat --release --crates"
 sym     = "nm --release -- --print-size --size-sort"
 asm     = "objdump --release -- -d --source"
-check   = "clippy -- -D warnings"
+lint    = "clippy -- -D warnings"

@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pulsarsync-sdr-gateway:latest
+    container_name: pulsarsync-sdr-gateway
+    ports:
+      - "8082:8082"
+      - "8088:8088/udp"
+    restart: unless-stopped
